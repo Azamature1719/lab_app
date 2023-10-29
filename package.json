@@ -9,11 +9,13 @@
     "dev": "nodemon src/index.js"
   },
   "dependencies": {
+    "@types/react-native": "^0.70.4",
     "express": "^4.17.1",
-    "mysql": "^2.17.1",
-    "sqlite3": "^5.0.0",
+    "pg": "^8.8.0",
+    "sqlite3": "latest",
     "uuid": "^3.3.3",
-    "wait-port": "^0.2.2"
+    "wait-port": "^0.2.2",
+    "dotenv": "latest"
   },
   "resolutions": {
     "ansi-regex": "5.0.1"

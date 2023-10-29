@@ -1,36 +1,38 @@
-const sqlite3 = require('sqlite3').verbose();
+const waitPort = require('wait-port');
 const fs = require('fs');
-const location = process.env.SQLITE_DB_LOCATION || '/etc/todos/todo.db';
+const {Client, Pool} = require('pg');
+const postgres = new Client();
 
-let db, dbAll, dbRun;
+const {
+    PGHOST: HOST,
+    PGUSER: USER,
+    PGPASSWORD: PASSWORD,
+    PGDATABASE: DB,
+} = process.env;
 
-function init() {
-    const dirName = require('path').dirname(location);
-    if (!fs.existsSync(dirName)) {
-        fs.mkdirSync(dirName, { recursive: true });
-    }
+let pool;
+
+async function init() {
+    pool = new Pool(); 
+
+    await pool.connect();
 
     return new Promise((acc, rej) => {
-        db = new sqlite3.Database(location, err => {
-            if (err) return rej(err);
+        pool.query(
+            'CREATE TABLE IF NOT EXISTS todo_items (id varchar(36), name varchar(255), completed boolean)',
+            err => {
+                if (err) return rej(err);
 
-            if (process.env.NODE_ENV !== 'test')
-                console.log(`Using sqlite database at ${location}`);
-
-            db.run(
-                'CREATE TABLE IF NOT EXISTS todo_items (id varchar(36), name varchar(255), completed boolean)',
-                (err, result) => {
-                    if (err) return rej(err);
-                    acc();
-                },
-            );
-        });
+                console.log(`Connected to postgres db at host ${HOST}`);
+                acc();
+            },
+        );
     });
 }
 
 async function teardown() {
     return new Promise((acc, rej) => {
-        db.close(err => {
+        pool.end(err => {
             if (err) rej(err);
             else acc();
         });
@@ -39,12 +41,12 @@ async function teardown() {
 
 async function getItems() {
     return new Promise((acc, rej) => {
-        db.all('SELECT * FROM todo_items', (err, rows) => {
+        pool.query('SELECT * FROM todo_items', (err, rows) => {
             if (err) return rej(err);
             acc(
-                rows.map(item =>
+                rows.rows.map(item =>
                     Object.assign({}, item, {
-                        completed: item.completed === 1,
+                        completed: item.completed === 1 || item.completed === true,
                     }),
                 ),
             );
@@ -54,12 +56,12 @@ async function getItems() {
 
 async function getItem(id) {
     return new Promise((acc, rej) => {
-        db.all('SELECT * FROM todo_items WHERE id=?', [id], (err, rows) => {
+        pool.query('SELECT * FROM todo_items WHERE id=$1', [id], (err, rows) => {
             if (err) return rej(err);
             acc(
-                rows.map(item =>
+                rows.rows.map(item =>
                     Object.assign({}, item, {
-                        completed: item.completed === 1,
+                        completed: item.completed === 1 || item.completed === true,
                     }),
                 )[0],
             );
@@ -69,8 +71,8 @@ async function getItem(id) {
 
 async function storeItem(item) {
     return new Promise((acc, rej) => {
-        db.run(
-            'INSERT INTO todo_items (id, name, completed) VALUES (?, ?, ?)',
+        pool.query(
+            'INSERT INTO todo_items (id, name, completed) VALUES ($1, $2, $3)',
             [item.id, item.name, item.completed ? 1 : 0],
             err => {
                 if (err) return rej(err);
@@ -82,8 +84,8 @@ async function storeItem(item) {
 
 async function updateItem(id, item) {
     return new Promise((acc, rej) => {
-        db.run(
-            'UPDATE todo_items SET name=?, completed=? WHERE id = ?',
+        pool.query(
+            'UPDATE todo_items SET name=$1, completed=$2 WHERE id=$3',
             [item.name, item.completed ? 1 : 0, id],
             err => {
                 if (err) return rej(err);
@@ -91,11 +93,11 @@ async function updateItem(id, item) {
             },
         );
     });
-} 
+}
 
 async function removeItem(id) {
     return new Promise((acc, rej) => {
-        db.run('DELETE FROM todo_items WHERE id = ?', [id], err => {
+        pool.query('DELETE FROM todo_items WHERE id = $1', [id], err => {
             if (err) return rej(err);
             acc();
         });
